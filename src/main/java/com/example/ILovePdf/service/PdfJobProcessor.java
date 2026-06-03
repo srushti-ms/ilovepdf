@@ -1,6 +1,7 @@
 package com.example.ILovePdf.service;
 
 import com.example.ILovePdf.dto.JobDetails;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.multipdf.Splitter;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 
+@Slf4j
 @Service
 public class PdfJobProcessor {
 
@@ -35,10 +37,13 @@ public class PdfJobProcessor {
             merger.mergeDocuments(null);
 
             job.setStatus("COMPLETED");
+            log.info("Merge completed for jobId {}", job.getJobId());
 
         } catch (Exception e) {
 
             job.setStatus("FAILED");
+            log.info("Merge failed for jobId {}", job.getJobId());
+
         }
 
     }
@@ -59,8 +64,11 @@ public class PdfJobProcessor {
                     outputPath.toString().lines().toList()
             );
             job.setStatus("COMPLETED");
+            log.info("File compressed for jobId {}", job.getJobId());
+
         } catch (IOException e) {
             job.setStatus("FAILED");
+            log.info("File compression failed for jobId {}", job.getJobId());
             throw e;
         }
     }
@@ -84,8 +92,12 @@ public class PdfJobProcessor {
             }
 
             job.setStatus("COMPLETED");
+            log.info("File split completed for jobId {}", job.getJobId());
+
         } catch (IOException e) {
             job.setStatus("FAILED");
+            log.info("File splitting failed for jobId {}", job.getJobId());
+
             throw e;
         }
 
