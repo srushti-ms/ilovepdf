@@ -2,13 +2,7 @@ package com.example.ILovePdf.service;
 
 import com.example.ILovePdf.config.StoragePaths;
 import com.example.ILovePdf.dto.JobDetails;
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.multipdf.PDFMergerUtility;
-import org.apache.pdfbox.multipdf.Splitter;
-import org.apache.pdfbox.pdmodel.PDDocument;
 import org.springframework.stereotype.Service;
-
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,10 +17,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PdfService {
 
     private final StoragePaths storagePaths;
+    private final PdfJobProcessor pdfJobProcessor;
     private final Map<UUID, JobDetails> jobs = new ConcurrentHashMap<>();
 
-    public PdfService(StoragePaths storagePaths) {
+    public PdfService(StoragePaths storagePaths, PdfJobProcessor pdfJobProcessor) {
         this.storagePaths = storagePaths;
+        this.pdfJobProcessor = pdfJobProcessor;
     }
 
     public JobDetails merge(List<String> paths) throws IOException {
@@ -34,34 +30,21 @@ public class PdfService {
         Path resultsDir = storagePaths.resultsDir();
         Files.createDirectories(resultsDir);
 
-        Path outputPath = resultsDir.resolve(jobId + ".pdf");
-        String outputFile = outputPath.toString();
-        List<String> result = new ArrayList<>();
-        result.add(outputFile);
+        String outputFile = resultsDir.resolve(jobId + ".pdf").toString();
 
         JobDetails response = new JobDetails();
         response.setJobId(jobId);
         response.setOperation("MERGE");
         response.setInputFiles(paths);
-        response.setOutputFile(result);
+        response.setOutputFile(List.of(outputFile));
         response.setStatus("PENDING");
         jobs.put(jobId, response);
 
-        try {
-            response.setStatus("PROCESSING");
-
-            PDFMergerUtility merger = new PDFMergerUtility();
-            for (String file : paths) {
-                merger.addSource(file);
-            }
-            merger.setDestinationFileName(outputFile);
-            merger.mergeDocuments(null);
-
-            response.setStatus("COMPLETED");
-        } catch (IOException e) {
-            response.setStatus("FAILED");
-            throw e;
-        }
+        pdfJobProcessor.processMerge(
+                response,
+                paths,
+                outputFile
+        );
 
         return response;
     }
@@ -91,27 +74,7 @@ public class PdfService {
 
         List<String> outputFiles = new ArrayList<>();
 
-        try (PDDocument document = Loader.loadPDF(new File(paths.get(0)))) {
-            response.setStatus("PROCESSING");
-
-            Splitter splitter = new Splitter();
-            List<PDDocument> pages = splitter.split(document);
-
-            int pageNumber = 1;
-            for (PDDocument pageDoc : pages) {
-                Path outputPath = resultsDir.resolve(jobId + "_page_" + pageNumber + ".pdf");
-                try (pageDoc) {
-                    pageDoc.save(outputPath.toFile());
-                }
-                outputFiles.add(outputPath.toString());
-                pageNumber++;
-            }
-
-            response.setStatus("COMPLETED");
-        } catch (IOException e) {
-            response.setStatus("FAILED");
-            throw e;
-        }
+        pdfJobProcessor.processSplit(response, paths, outputFiles, resultsDir);
 
         response.setOutputFile(outputFiles);
         return response;
@@ -136,24 +99,7 @@ public class PdfService {
 
         jobs.put(jobId, response);
 
-        try {
-            response.setStatus("PROCESSING");
-
-            try (PDDocument document =
-                         Loader.loadPDF(
-                                 new File(inputFile))) {
-                document.save(
-                        outputPath.toFile()
-                );
-            }
-            response.setOutputFile(
-                    outputPath.toString().lines().toList()
-            );
-            response.setStatus("COMPLETED");
-        } catch (IOException e) {
-            response.setStatus("FAILED");
-            throw e;
-        }
+        pdfJobProcessor.processCompress(response, inputFile, outputPath);
         return response;
     }
 }
